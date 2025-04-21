@@ -1,0 +1,58 @@
+---
+- name: Configure Nginx on AWS and Azure Instances
+  hosts: app_server
+  become: yes
+  tasks:
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Start and enable Nginx service
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Determine if the server is AWS or Azure
+      shell: curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "azure"
+      register: cloud_provider
+      changed_when: false
+
+    - name: Display detected cloud provider
+      debug:
+        msg: "Cloud Provider: {{ 'AWS' if 'i-' in cloud_provider.stdout else 'Azure' }}"
+
+    - name: Copy the correct index.html file for AWS
+      copy:
+        src: "{{ playbook_dir }}/nginx_content/index-aws.html" 
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+      when: "'i-' in cloud_provider.stdout"
+
+    - name: Copy the correct index.html file for Azure
+      copy:
+        src: "{{ playbook_dir }}/nginx_content/index-azure.html"
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+      when: "'i-' not in cloud_provider.stdout"
+
+    - name: Restart Nginx to apply changes
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Verify Nginx is running
+      command: systemctl status nginx
+      register: nginx_status
+      changed_when: false
+
+    - name: Display Nginx status
+      debug:
+        msg: "{{ nginx_status.stdout_lines }}"
